@@ -56,39 +56,24 @@ The Internet Gateway provides an internet routing path for resources in public s
 ![Internet Gateway](images/IGW.png)
 
 **NAT Gateway**
-The NAT Gateway is provisioned in Public Subnet 2a and associated with an Elastic IP.
+The NAT Gateway is provisioned in Public Subnet 2a and associated with an Elastic IP, this enables private application instances to initiate outbound internet connections.
 The private route table contains:
-route {
-  cidr_block     = "0.0.0.0/0"
-  nat_gateway_id = aws_nat_gateway.orange-nat-gateway.id
-}
-This enables private application instances to initiate outbound internet connections.
-What I learned: A private subnet is not defined simply by whether an instance has a public IP address. Route tables, gateway configuration and security rules all contribute to how network traffic flows.
-Current limitation: Both private subnets use one NAT Gateway. This is sufficient for my learning environment but introduces a dependency on one Availability Zone for outbound connectivity.
+![NAT Gateway](<images/NAT GW.png>)
 
-🔐 2. Security Group Configuration
+A private subnet is not defined simply by whether an instance has a public IP address.  Route tables, gateway configuration and security rules all contribute to how network traffic flows.
+Both private subnets use one NAT Gateway. This is sufficient for my learning environment but introduces a dependency on one Availability Zone for outbound connectivity. This was due to financial implication of NAT Gateway.
+
+**Security Group Configuration**
 I created three Security Groups:
-Security Group	Purpose	Key Inbound Rules
-Orange-BastionHost-SG	Administrative access	SSH 22 from my public IP
-Orange-App-ALB-SG	Public application entry point	HTTP 80 from the internet
-Orange-App-SG	Private application servers	HTTP 80 from ALB SG; SSH 22 from Bastion SG
-Application Security Group
-The application Security Group uses another Security Group as the source for incoming HTTP traffic.
-ingress {
-  description = "HTTP from Orange-App-ALB"
-  from_port   = 80
-  to_port     = 80
-  protocol    = "tcp"
+- Orange-BastionHost-SG	for administrative access	through SSH from my public IP
+- Orange-App-ALB-SG	for internet entry point	through HTTP to Orange App, this mean that the application Security Group uses another Security Group as the source for incoming HTTP traffic.
+- Orange-App-SG	for Private application servers	HTTP 80 from ALB SG and SSH from Bastion SG
 
-  security_groups = [
-    aws_security_group.orange-app-alb.id
-  ]
-}
-This approach is more controlled than allowing inbound HTTP traffic from every public IP address.
-The dedicated application Security Group also permits SSH access from the Bastion Host Security Group.
-Configuration note: In the uploaded version of application.tf, the Launch Template still references the ALB Security Group. The intended configuration is to attach Orange-App-SG to application instances. This should be corrected and validated before publishing the repository as a completed deployment.
+![Security Groups](<images/security grp.png>)
 
-🖥️ 3. Bastion Host
+This approach is more controlled than allowing inbound HTTP traffic from every public IP address. The dedicated application Security Group also permits SSH access from the Bastion Host Security Group.
+
+**Bastion Host**
 I provisioned a Bastion Host using Terraform.
 The Bastion Host runs Amazon Linux 2023 and is deployed in Public Subnet 2a.
 Its main purpose is to provide a controlled administrative entry point for accessing EC2 instances in private subnets.
