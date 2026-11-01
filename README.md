@@ -74,76 +74,26 @@ I created three Security Groups:
 This approach is more controlled than allowing inbound HTTP traffic from every public IP address. The dedicated application Security Group also permits SSH access from the Bastion Host Security Group.
 
 **Bastion Host**
-I provisioned a Bastion Host using Terraform.
-The Bastion Host runs Amazon Linux 2023 and is deployed in Public Subnet 2a.
-Its main purpose is to provide a controlled administrative entry point for accessing EC2 instances in private subnets.
-Why a Bastion Host?
-Private application servers should not need public SSH access simply because an administrator needs to troubleshoot them.
-The Bastion Host allows SSH access to be restricted to a known public IP address, while private application instances accept SSH traffic from the Bastion Security Group.
-Terraform Resource
-The Bastion Host is defined in:
-bastion.tf
-The configuration includes:
-* Amazon Linux 2023 AMI.
-* EC2 instance type.
-* Public subnet placement.
-* Bastion Security Group.
-* Existing EC2 key pair.
-* Public IPv4 address assignment.
-* 8 GiB gp3 root volume.
-What I learned: Administrative access and application access serve different purposes and should be controlled separately.
-A future improvement is to explore AWS Systems Manager Session Manager to reduce reliance on public SSH access.
+I provisioned a Bastion Host Server using Terraform. It is deployed in subnet 2a, its main purpose is to provide a controlled administrative entry point for accessing my Orange app servers in private subnets. The Bastion Host allows SSH access to be restricted to a known public IP address, while private application instances accept SSH traffic from the Bastion Security Group.
 
-⚖️ 4. Application Load Balancer
-I created an internet-facing Application Load Balancer named:
-orange-app-alb
-The ALB is deployed across the two public subnets.
-It uses the Orange-App-ALB-SG Security Group.
-Target Group
-The application Target Group is named:
-orange-tg
-Configuration:
-Property	Value
-Protocol	HTTP
-Port	80
-Target type	Instance
-Health check path	/
-Expected status code	200
-Health check interval	30 seconds
-Healthy threshold	2
-Unhealthy threshold	2
-The ALB listener forwards HTTP requests to the Target Group.
-Why Use an ALB?
-Instead of exposing individual application servers directly, the ALB provides a central entry point.
-It can distribute requests across healthy application instances and stop routing traffic to targets that fail health checks.
-This separates the public-facing application endpoint from the private compute infrastructure.
+![Bastion Host Security Groups](<images/Bastion SG.png>)
 
-📈 5. EC2 Auto Scaling
-The application servers are managed by an Auto Scaling Group named:
-Orange-App-ASG
-Capacity Configuration
-min_size         = 2
-desired_capacity = 2
-max_size         = 3
-The ASG is configured to launch application instances in both private subnets.
-It also uses ELB health checks with a 300-second grace period.
-CPU Target Tracking
-I configured an Auto Scaling policy targeting 60% average CPU utilisation.
-resource "aws_autoscaling_policy" "orange_cpu" {
-  name                   = "Orange-CPU-Scaling"
-  autoscaling_group_name = aws_autoscaling_group.app.name
-  policy_type            = "TargetTrackingScaling"
+What I learned with this approach is simple,  administrative access and application access serve different purposes and should be controlled separately. A future improvement would be to explore AWS Systems Manager Session Manager to reduce reliance on public SSH access.
 
-  target_tracking_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ASGAverageCPUUtilization"
-    }
+**Application Load Balancer**
+I created an internet-facing Application Load Balancer named "orange-app-alb". Instead of exposing individual application servers directly, the ALB provides a central entry point and it is deployed across the two public subnets. It uses the Orange-App-ALB-SG Security Group. The ALB listener forwards HTTP requests to the Target Group. It can distribute requests across healthy application instances and stop routing traffic to targets that fail health checks.
 
-    target_value = 60.0
-  }
-}
-The policy allows AWS Auto Scaling to adjust capacity in response to CPU utilisation, within the configured ASG limits.
-Rolling Instance Refresh
+![Target Group Configuration](<images/Target group.png>)
+
+**EC2 Auto Scaling**
+The application servers are managed by an Auto Scaling Group named "Orange-App-ASG". The ASG is configured to launch application instances in both private subnets. It also uses ELB health checks with a 300-second grace period.
+
+![Auto Scaling Group](images/ASG.png)
+
+I also configured an Auto Scaling policy targeting 60% average CPU utilisation. The policy allows AWS Auto Scaling to adjust capacity in response to CPU utilisation, within the configured ASG limits.
+
+![Auto Scaling CPU Configuration](<images/AS CPU.png>)
+
 I also configured an instance-refresh strategy.
 instance_refresh {
   strategy = "Rolling"
@@ -153,11 +103,12 @@ instance_refresh {
     instance_warmup        = 180
   }
 }
-This provides a mechanism for gradually replacing instances when supported ASG configuration changes trigger a refresh.
-What I learned: An Auto Scaling Group manages desired instance capacity, while scaling policies define when AWS should adjust that capacity.
-Validation: Load testing and simulated instance-failure testing are useful next steps to demonstrate that scaling and recovery behave as intended.
 
-⚙️ 6. EC2 Launch Template and Application Bootstrapping
+This provides a mechanism for gradually replacing instances when supported ASG configuration changes trigger a refresh.
+
+I now understand that An Auto Scaling Group manages desired instance capacity, while scaling policies define when AWS should adjust that capacity.
+
+**EC2 Launch Template** 
 The application Launch Template is defined in:
 application.tf
 It specifies:
